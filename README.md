@@ -310,20 +310,6 @@ yarn hardhat size-contracts
 
 ---
 
-## Security & Limitations
-
-> ⚠️ **This contract has NOT been professionally audited. Use it at your own risk.**
-
-- The contract is provided for educational and development purposes only.
-- Do **not** deploy to Ethereum mainnet without a thorough independent security audit.
-- Known areas to review before production use:
-  - Reentrancy guards on `payRent`, `resolveDispute`, and `endAgreement` (all transfer ETH).
-  - Integer overflow/underflow — the contract uses Solidity 0.8.x built-in checks, but several `unchecked` blocks are present.
-  - The `endAgreement` function currently has no access-control check.
-  - The dispute staking mechanism uses raw `msg.value` accounting that should be audited carefully.
-
----
-
 ## Contributing
 
 Contributions, issues, and feature requests are welcome!
@@ -337,13 +323,3 @@ Contributions, issues, and feature requests are welcome!
 7. Open a pull request against the `main` branch.
 
 Please keep pull requests focused — one feature or fix per PR.
-
----
-
-## License
-
-> 📄 **No license file is currently present in this repository.**
->
-> The maintainer should choose and add a license before accepting public contributions or use. Common choices for open-source Ethereum projects include [MIT](https://choosealicense.com/licenses/mit/) and [GPL-3.0](https://choosealicense.com/licenses/gpl-3.0/). Visit [choosealicense.com](https://choosealicense.com) for guidance.
->
-> Once a license is chosen, create a `LICENSE` file in the repository root and update this section accordingly.
