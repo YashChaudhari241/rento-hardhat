@@ -1,0 +1,279 @@
+# Rento — Decentralized Housing Rental on the EVM
+
+> A Solidity smart contract that manages the full lifecycle of a rental agreement — from listing creation and proposal negotiation through escrow, automated rent timelines, and on-chain dispute resolution.
+
+---
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Features](#features)
+3. [Architecture](#architecture)
+   - [Contract Components](#contract-components)
+   - [Roles](#roles)
+   - [Rental Agreement Lifecycle](#rental-agreement-lifecycle)
+4. [Prerequisites](#prerequisites)
+5. [Quickstart — Local Development](#quickstart--local-development)
+6. [Deployment](#deployment)
+   - [Environment Variables](#environment-variables)
+   - [Deploy to a Public Testnet](#deploy-to-a-public-testnet)
+7. [Usage](#usage)
+   - [Interaction Scripts](#interaction-scripts)
+8. [Security & Limitations](#security--limitations)
+9. [Contributing](#contributing)
+10. [License](#license)
+
+---
+
+## Overview
+
+**Rento** is a decentralized Housing Rental System implemented as a Solidity smart contract on the Ethereum Virtual Machine (EVM). It removes the need for trusted intermediaries by encoding rental agreements, escrow logic, payment schedules, and dispute resolution entirely on-chain. The project is built with [Hardhat](https://hardhat.org/) and targets the Sepolia testnet as its primary public network.
+
+---
+
+## Features
+
+| Feature | Description |
+|---|---|
+| **Listing Creation** | Landlords publish property listings on-chain with a metadata ID and hash (e.g., IPFS CID). |
+| **Proposal Negotiation** | Prospective tenants submit rent proposals; landlords review and accept the best fit. |
+| **Escrow of Deposits** | The tenant's security deposit is held in the contract and only released after the agreement ends or a dispute is resolved. |
+| **Automated Rent Timelines** | On agreement start, monthly payment due-dates and amounts are computed and stored on-chain; late payments are automatically penalized (+10 %). |
+| **Dispute Resolution** | Either party can raise a dispute and stake funds; a pre-agreed neutral resolver (middleman) settles it on-chain. |
+
+---
+
+## Architecture
+
+### Contract Components
+
+All logic lives in a single contract: **`contracts/HousingRental.sol`**.
+
+| Component | Description |
+|---|---|
+| `Listing` | Represents a landlord's rental property (index, landlord address, IPFS metadata). |
+| `Proposal` | A tenant's rent offer attached to a listing. |
+| `RentDetails` | The full agreement record: parties, deposit, rent amount, signatures, start date, duration, and status. |
+| `Payment` | Array-based payment schedule generated at agreement start (expected dates, amounts, and late flags). |
+| `Dispute` | Tracks which party raised a dispute, the staked amount, and any held funds. |
+| `RentalStatus` | Enum: `AWAITING_SIGNATURES → AWAITING_START_DATE → STARTED → ENDED`. |
+
+### Roles
+
+| Role | Address Source | Responsibilities |
+|---|---|---|
+| **Landlord** | `msg.sender` of `createListing` | Creates listings, accepts/rejects proposals, signs the agreement. |
+| **Tenant** | Proposal `sender` | Submits proposals, pays security deposit (escrow), signs agreement, pays monthly rent. |
+| **Resolver (Middleman)** | Designated at `acceptProposal` | Neutral third-party; co-signs the agreement and resolves disputes. |
+
+### Rental Agreement Lifecycle
+
+```
+Landlord creates listing
+        │
+Tenant submits proposal
+        │
+Landlord accepts proposal → RentDetails created (AWAITING_SIGNATURES)
+        │
+Tenant signs + deposits security ──┐
+Resolver signs                     ├─→ Status: AWAITING_START_DATE
+        │
+Start date reached → startAgreement() called → Status: STARTED
+        │                (payment schedule created on-chain)
+        │
+Monthly rent payments via payRent()
+        │
+  ┌─────┴──────┐
+  │  Dispute?  │  → raiseDispute() → resolveDispute() by Resolver
+  └─────┬──────┘
+        │
+Agreement term ends → endAgreement() → deposit returned to tenant → ENDED
+```
+
+---
+
+## Prerequisites
+
+| Requirement | Version / Notes |
+|---|---|
+| [Node.js](https://nodejs.org/) | v16 or later recommended |
+| npm or [Yarn](https://yarnpkg.com/) | Yarn is used in this project (`yarn.lock` present) |
+| [Hardhat](https://hardhat.org/) | Installed locally via `package.json` devDependencies |
+| RPC endpoint *(optional)* | [Alchemy](https://www.alchemy.com/) or [Infura](https://infura.io/) URL for public-network deployments |
+| Etherscan API key *(optional)* | Required only if you enable contract verification |
+
+---
+
+## Quickstart — Local Development
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/YashChaudhari241/rento-hardhat.git
+cd rento-hardhat
+
+# 2. Install dependencies
+yarn install
+
+# 3. Compile contracts
+yarn hardhat compile
+
+# 4. Run tests
+yarn hardhat test
+
+# 5. Start a local Hardhat node (in a separate terminal)
+yarn hardhat node
+
+# 6. Deploy to the local node
+yarn hardhat deploy --network localhost
+```
+
+> **Tip:** The deploy script writes the contract address to `../housing_rental_dapp/hardhat.json`. This path assumes the companion front-end project (`housing_rental_dapp`) lives as a sibling directory alongside `rento-hardhat`. If you do not have the front-end project checked out, you can safely ignore the resulting file-write error, or adjust the path in `deploy/01-deploy-rental.js` to match your local directory structure.
+
+---
+
+## Deployment
+
+### Environment Variables
+
+Copy the example below into a file named `.env` in the project root. **Never commit `.env` to version control** — it is already listed in `.gitignore`.
+
+```dotenv
+# .env.example
+
+# RPC endpoint for the target network (Alchemy / Infura / your own node)
+RPC_URL=https://eth-sepolia.g.alchemy.com/v2/<YOUR_ALCHEMY_API_KEY>
+
+# Private key of the deployer account (without 0x prefix)
+PRIVATE_KEY=your_private_key_here
+
+# Optional: Etherscan API key for contract verification
+ETHERSCAN_API_KEY=your_etherscan_api_key_here
+```
+
+### Deploy to a Public Testnet
+
+The project is pre-configured for the **Sepolia** testnet (`chainId 11155111`).
+
+```bash
+# Make sure your .env is populated, then:
+yarn hardhat deploy --network sepolia
+```
+
+The deployed contract address is printed to the console and written to `../housing_rental_dapp/hardhat.json`.
+
+**Contract verification** (Etherscan) — verification support is scaffolded in the deploy script but currently commented out. To enable it:
+
+1. Uncomment the `verify` import and the verification block at the bottom of `deploy/01-deploy-rental.js`.
+2. Ensure `ETHERSCAN_API_KEY` is set in your `.env`.
+3. Re-run the deploy command; Hardhat Etherscan will verify automatically.
+
+---
+
+## Usage
+
+### Interaction Scripts
+
+A complete set of interaction scripts lives in the `scripts/` directory. Run them against a locally deployed instance (start the node and deploy first):
+
+```bash
+# Full rental lifecycle (mirrors testrun.sh)
+
+# 1. Landlord creates a property listing
+yarn hardhat run scripts/createListing.js --network localhost
+
+# 2. Tenant submits a rent proposal
+yarn hardhat run scripts/createProposal.js --network localhost
+
+# 3. View all proposals for a listing
+yarn hardhat run scripts/getProposals.js --network localhost
+
+# 4. Landlord accepts a proposal
+yarn hardhat run scripts/acceptProposal.js --network localhost
+
+# 5. Tenant signs the agreement (and deposits escrow funds)
+yarn hardhat run scripts/tenantSignAgreement.js --network localhost
+
+# 6. Resolver co-signs the agreement
+yarn hardhat run scripts/resolverSignAgreement.js --network localhost
+
+# 7. Trigger agreement start (callable once start date has passed)
+yarn hardhat run scripts/startAgreement.js --network localhost
+
+# 8. Tenant pays monthly rent
+yarn hardhat run scripts/payRent.js --network localhost
+
+# 9. Query the payment schedule
+yarn hardhat run scripts/getPaymentData.js --network localhost
+
+# 10. Tenant raises a dispute
+yarn hardhat run scripts/raiseTenantDispute.js --network localhost
+
+# 11. Query dispute state
+yarn hardhat run scripts/getDispute.js --network localhost
+
+# 12. Resolver settles the dispute
+yarn hardhat run scripts/resolveDispute.js --network localhost
+
+# Utility — fetch all listings or rent data
+yarn hardhat run scripts/getListings.js --network localhost
+yarn hardhat run scripts/getRentData.js --network localhost
+```
+
+You can also run the whole lifecycle in sequence using the provided shell script:
+
+```bash
+bash testrun.sh
+```
+
+### Hardhat Tasks
+
+```bash
+# Run tests with gas reporting
+yarn hardhat test
+
+# Generate a coverage report
+yarn hardhat coverage
+
+# Inspect contract sizes
+yarn hardhat size-contracts
+```
+
+---
+
+## Security & Limitations
+
+> ⚠️ **This contract has NOT been professionally audited. Use it at your own risk.**
+
+- The contract is provided for educational and development purposes only.
+- Do **not** deploy to Ethereum mainnet without a thorough independent security audit.
+- Known areas to review before production use:
+  - Reentrancy guards on `payRent`, `resolveDispute`, and `endAgreement` (all transfer ETH).
+  - Integer overflow/underflow — the contract uses Solidity 0.8.x built-in checks, but several `unchecked` blocks are present.
+  - The `endAgreement` function currently has no access-control check.
+  - The dispute staking mechanism uses raw `msg.value` accounting that should be audited carefully.
+
+---
+
+## Contributing
+
+Contributions, issues, and feature requests are welcome!
+
+1. Fork the repository.
+2. Create a feature branch: `git checkout -b feature/your-feature-name`
+3. Make your changes and add tests where appropriate.
+4. Ensure existing tests still pass: `yarn hardhat test`
+5. Run the linter: `yarn solhint 'contracts/**/*.sol'`
+6. Commit your changes using a descriptive message.
+7. Open a pull request against the `main` branch.
+
+Please keep pull requests focused — one feature or fix per PR.
+
+---
+
+## License
+
+> 📄 **No license file is currently present in this repository.**
+>
+> The maintainer should choose and add a license before accepting public contributions or use. Common choices for open-source Ethereum projects include [MIT](https://choosealicense.com/licenses/mit/) and [GPL-3.0](https://choosealicense.com/licenses/gpl-3.0/). Visit [choosealicense.com](https://choosealicense.com) for guidance.
+>
+> Once a license is chosen, create a `LICENSE` file in the repository root and update this section accordingly.
